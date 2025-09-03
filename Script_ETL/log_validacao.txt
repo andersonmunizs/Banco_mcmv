@@ -1,0 +1,5 @@
+Relatório de Validação de Dados
+--------------------------------
+Comparação de Registros: FALHA
+Checagem de Nulos (qtd_uh): OK
+Validação de Tipo de Dados: Concluída com sucesso.
