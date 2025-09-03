@@ -1,1 +1,1 @@
-Deletar o POSTGRES_DATA antes de subir o container, caso exista o diretório, pois ele tem vários arquivos temporários
+Caso exista o diretório "postgres_data" antes do container subir, deletar o diretório
