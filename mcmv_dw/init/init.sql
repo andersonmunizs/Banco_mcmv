@@ -105,7 +105,7 @@ COPY dw_mcmv.stg_mcmv(
     txt_endereco,
     txt_cep
 )
-FROM '/data/dados_tratados_utf8.csv'
+FROM '/data/dados_tratados_utf8.csv' 
 DELIMITER ';'
 CSV HEADER
 ENCODING 'UTF8';
@@ -151,11 +151,11 @@ ON CONFLICT (data) DO NOTHING;
 -- Dimensão Localidade
 INSERT INTO dw_mcmv.dim_localidade (municipio, uf, regiao)
 SELECT DISTINCT
-    TRIM(txt_nome_municipio),
+    TRIM(txt_regiao), 
     TRIM(txt_sigla_uf),
-    TRIM(txt_regiao_2)
+    TRIM(txt_regiao_1) 
 FROM dw_mcmv.stg_mcmv
-WHERE txt_nome_municipio IS NOT NULL
+WHERE txt_regiao IS NOT NULL
 ON CONFLICT (municipio, uf, regiao) DO NOTHING;
 
 -- Dimensão Empreendimento
@@ -180,25 +180,26 @@ SELECT
     t.id_tempo,
     l.id_localidade,
     e.id_empreendimento,
-    s.qtd_uh,
-    s.qtd_uh_entregues,
-    s.qtd_uh_vigentes,
-    s.qtd_uh_distratadas,
+    s.qtd_uh::INT, 
+    s.qtd_uh_entregues::INT,
+    s.qtd_uh_vigentes::INT, 
+    s.qtd_uh_distratadas::INT, 
     s.val_contratado_total
 FROM dw_mcmv.stg_mcmv s
 LEFT JOIN dw_mcmv.dim_tempo t 
-       ON t.data = (
+        ON t.data = (
             CASE
                 WHEN s.dt_assinatura ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(s.dt_assinatura, 'DD/MM/YYYY')
                 WHEN s.dt_assinatura ~ '^\d{4}-\d{2}-\d{2}$' THEN TO_DATE(s.dt_assinatura, 'YYYY-MM-DD')
                 ELSE NULL
             END
-       )
+        )
 LEFT JOIN dw_mcmv.dim_localidade l 
-       ON l.municipio = TRIM(s.txt_nome_municipio)
-      AND l.uf = TRIM(s.txt_sigla_uf)
-      AND l.regiao = TRIM(s.txt_regiao_2)
+        ON l.municipio = TRIM(s.txt_regiao) 
+       AND l.uf = TRIM(s.txt_sigla_uf)
+       AND l.regiao = TRIM(s.txt_regiao_1) 
+
 LEFT JOIN dw_mcmv.dim_empreendimento e 
-       ON e.nome = TRIM(s.txt_nome_empreendimento)
-      AND e.modalidade = TRIM(s.txt_modalidade)
-      AND e.situacao = TRIM(s.txt_situacao_empreendimento);
+        ON e.nome = TRIM(s.txt_nome_empreendimento)
+       AND e.modalidade = TRIM(s.txt_modalidade)
+       AND e.situacao = TRIM(s.txt_situacao_empreendimento);

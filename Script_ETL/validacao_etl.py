@@ -2,7 +2,7 @@ import pandas as pd
 import psycopg2
 
 # Parâmetros
-ARQUIVO_ORIGEM = "dados_tratados.csv"
+ARQUIVO_ORIGEM = "dados_tratados_utf8.csv"
 DB_HOST = "localhost"
 DB_USER = "mcmv_user"
 DB_PASS = "mcmv_pass"
@@ -26,7 +26,6 @@ try:
     cur = conn.cursor()
 
     # 5. Contar os registros nas tabelas de destino
-    # CORREÇÃO: Adicionando o schema 'dw_mcmv' à consulta
     cur.execute("SELECT COUNT(*) FROM dw_mcmv.fato_empreendimento;")
     num_registros_destino = cur.fetchone()[0]
     print(f"Número de registros carregados no Data Warehouse: {num_registros_destino}")
@@ -39,7 +38,6 @@ try:
         print(f"Atenção! Perda de dados. Registros na origem: {num_registros_origem}, Registros no destino: {num_registros_destino}")
 
     # b. Checagem de Valores Nulos
-    # CORREÇÃO: Adicionando o schema 'dw_mcmv' à consulta
     cur.execute("SELECT COUNT(*) FROM dw_mcmv.fato_empreendimento WHERE qtd_uh IS NULL;")
     nulos_qtd_uh = cur.fetchone()[0]
 
