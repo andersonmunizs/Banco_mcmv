@@ -41,16 +41,16 @@ CREATE TABLE dw_mcmv.dim_tempo (
     data DATE UNIQUE,
     ano INT,
     mes INT,
-    dia INT
+    trimestre INT
 );
 
 DROP TABLE IF EXISTS dw_mcmv.dim_localidade CASCADE;
 CREATE TABLE dw_mcmv.dim_localidade (
-    id_localidade SERIAL PRIMARY KEY,
-    municipio TEXT,
-    uf CHAR(2),
-    regiao TEXT,
-    UNIQUE(municipio, uf, regiao)
+    sk_localidade SERIAL PRIMARY KEY,
+    cod_ibge TEXT,
+    txt_sigla_uf CHAR(2),
+    txt_regiao TEXT,
+    UNIQUE(cod_ibge, txt_sigla_uf, txt_regiao)
 );
 
 DROP TABLE IF EXISTS dw_mcmv.dim_empreendimento CASCADE;
@@ -83,7 +83,7 @@ DROP TABLE IF EXISTS dw_mcmv.fato_empreendimento;
 CREATE TABLE dw_mcmv.fato_empreendimento (
     id_fato SERIAL PRIMARY KEY,
     id_tempo INT REFERENCES dw_mcmv.dim_tempo(id_tempo),
-    id_localidade INT REFERENCES dw_mcmv.dim_localidade(id_localidade),
+    id_localidade INT REFERENCES dw_mcmv.dim_localidade(sk_localidade),
     id_empreendimento INT REFERENCES dw_mcmv.dim_empreendimento(id_empreendimento),
     id_construtora INT REFERENCES dw_mcmv.dim_construtora(id_construtora),
     id_agente_financeiro INT REFERENCES dw_mcmv.dim_agente_financeiro(id_agente),
@@ -130,10 +130,9 @@ ENCODING 'UTF8';
 -- =====================================================
 -- 6. POPULAR DIMENSÕES
 -- =====================================================
--- Dimensão Tempo (ajuste automático de formato de data)
-INSERT INTO dw_mcmv.dim_tempo (data, ano, mes, dia)
+-- Dimensão Tempo
+INSERT INTO dw_mcmv.dim_tempo (data, ano, mes, trimestre)
 SELECT DISTINCT
-    -- tenta converter para DD/MM/YYYY, se falhar assume YYYY-MM-DD
     CASE
         WHEN dt_assinatura ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(dt_assinatura, 'DD/MM/YYYY')
         WHEN dt_assinatura ~ '^\d{4}-\d{2}-\d{2}$' THEN TO_DATE(dt_assinatura, 'YYYY-MM-DD')
@@ -153,7 +152,7 @@ SELECT DISTINCT
             ELSE NULL
         END
     ))::INT,
-    EXTRACT(DAY FROM (
+    EXTRACT(QUARTER FROM (
         CASE
             WHEN dt_assinatura ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(dt_assinatura, 'DD/MM/YYYY')
             WHEN dt_assinatura ~ '^\d{4}-\d{2}-\d{2}$' THEN TO_DATE(dt_assinatura, 'YYYY-MM-DD')
@@ -165,14 +164,14 @@ WHERE dt_assinatura IS NOT NULL
 ON CONFLICT (data) DO NOTHING;
 
 -- Dimensão Localidade
-INSERT INTO dw_mcmv.dim_localidade (municipio, uf, regiao)
+INSERT INTO dw_mcmv.dim_localidade (cod_ibge, txt_sigla_uf, txt_regiao)
 SELECT DISTINCT
-    TRIM(txt_regiao),
+    TRIM(cod_ibge),
     TRIM(txt_sigla_uf),
     TRIM(txt_regiao_1)
 FROM dw_mcmv.stg_mcmv
-WHERE txt_regiao IS NOT NULL
-ON CONFLICT (municipio, uf, regiao) DO NOTHING;
+WHERE cod_ibge IS NOT NULL
+ON CONFLICT (cod_ibge, txt_sigla_uf, txt_regiao) DO NOTHING;
 
 -- Dimensão Empreendimento
 INSERT INTO dw_mcmv.dim_empreendimento (nome, modalidade, situacao)
@@ -211,7 +210,7 @@ INSERT INTO dw_mcmv.fato_empreendimento (
 )
 SELECT
     t.id_tempo,
-    l.id_localidade,
+    l.sk_localidade,
     e.id_empreendimento,
     c.id_construtora,
     a.id_agente,
@@ -231,9 +230,9 @@ LEFT JOIN dw_mcmv.dim_tempo t
             END
         )
 LEFT JOIN dw_mcmv.dim_localidade l
-        ON l.municipio = TRIM(s.txt_regiao)
-       AND l.uf = TRIM(s.txt_sigla_uf)
-       AND l.regiao = TRIM(s.txt_regiao_1)
+        ON l.cod_ibge = TRIM(s.cod_ibge)
+       AND l.txt_sigla_uf = TRIM(s.txt_sigla_uf)
+       AND l.txt_regiao = TRIM(s.txt_regiao_1)
 LEFT JOIN dw_mcmv.dim_empreendimento e
         ON e.nome = TRIM(s.txt_nome_empreendimento)
        AND e.modalidade = TRIM(s.txt_modalidade)
