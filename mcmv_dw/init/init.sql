@@ -32,7 +32,6 @@ CREATE TABLE dw_mcmv.stg_mcmv (
     txt_cep TEXT
 );
 
-
 -- =====================================================
 -- 3. DIMENSÕES
 -- =====================================================
@@ -63,6 +62,20 @@ CREATE TABLE dw_mcmv.dim_empreendimento (
     UNIQUE(nome, modalidade, situacao)
 );
 
+DROP TABLE IF EXISTS dw_mcmv.dim_construtora CASCADE;
+CREATE TABLE dw_mcmv.dim_construtora (
+    id_construtora SERIAL PRIMARY KEY,
+    cnpj TEXT,
+    nome TEXT,
+    UNIQUE(cnpj, nome)
+);
+
+DROP TABLE IF EXISTS dw_mcmv.dim_agente_financeiro CASCADE;
+CREATE TABLE dw_mcmv.dim_agente_financeiro (
+    id_agente SERIAL PRIMARY KEY,
+    nome TEXT UNIQUE
+);
+
 -- =====================================================
 -- 4. TABELA FATO
 -- =====================================================
@@ -72,11 +85,14 @@ CREATE TABLE dw_mcmv.fato_empreendimento (
     id_tempo INT REFERENCES dw_mcmv.dim_tempo(id_tempo),
     id_localidade INT REFERENCES dw_mcmv.dim_localidade(id_localidade),
     id_empreendimento INT REFERENCES dw_mcmv.dim_empreendimento(id_empreendimento),
+    id_construtora INT REFERENCES dw_mcmv.dim_construtora(id_construtora),
+    id_agente_financeiro INT REFERENCES dw_mcmv.dim_agente_financeiro(id_agente),
     qtd_uh INT,
     qtd_uh_entregues INT,
     qtd_uh_vigentes INT,
     qtd_uh_distratadas INT,
-    val_contratado_total NUMERIC(15,2)
+    val_contratado_total NUMERIC(15,2),
+    val_desembolsado NUMERIC(15,2)
 );
 
 -- =====================================================
@@ -105,7 +121,7 @@ COPY dw_mcmv.stg_mcmv(
     txt_endereco,
     txt_cep
 )
-FROM '/data/dados_tratados_utf8.csv' 
+FROM '/data/dados_tratados_utf8.csv'
 DELIMITER ';'
 CSV HEADER
 ENCODING 'UTF8';
@@ -151,9 +167,9 @@ ON CONFLICT (data) DO NOTHING;
 -- Dimensão Localidade
 INSERT INTO dw_mcmv.dim_localidade (municipio, uf, regiao)
 SELECT DISTINCT
-    TRIM(txt_regiao), 
+    TRIM(txt_regiao),
     TRIM(txt_sigla_uf),
-    TRIM(txt_regiao_1) 
+    TRIM(txt_regiao_1)
 FROM dw_mcmv.stg_mcmv
 WHERE txt_regiao IS NOT NULL
 ON CONFLICT (municipio, uf, regiao) DO NOTHING;
@@ -168,25 +184,45 @@ FROM dw_mcmv.stg_mcmv
 WHERE txt_nome_empreendimento IS NOT NULL
 ON CONFLICT (nome, modalidade, situacao) DO NOTHING;
 
+-- Dimensão Construtora
+INSERT INTO dw_mcmv.dim_construtora (cnpj, nome)
+SELECT DISTINCT
+    TRIM(txt_cnpj_construtora_entidade),
+    TRIM(txt_nome_construtora_entidade)
+FROM dw_mcmv.stg_mcmv
+WHERE txt_cnpj_construtora_entidade IS NOT NULL
+ON CONFLICT (cnpj, nome) DO NOTHING;
+
+-- Dimensão Agente Financeiro
+INSERT INTO dw_mcmv.dim_agente_financeiro (nome)
+SELECT DISTINCT
+    TRIM(txt_nome_agente_financeiro)
+FROM dw_mcmv.stg_mcmv
+WHERE txt_nome_agente_financeiro IS NOT NULL
+ON CONFLICT (nome) DO NOTHING;
+
 -- =====================================================
 -- 7. POPULAR TABELA FATO
 -- =====================================================
 INSERT INTO dw_mcmv.fato_empreendimento (
-    id_tempo, id_localidade, id_empreendimento,
+    id_tempo, id_localidade, id_empreendimento, id_construtora, id_agente_financeiro,
     qtd_uh, qtd_uh_entregues, qtd_uh_vigentes, qtd_uh_distratadas,
-    val_contratado_total
+    val_contratado_total, val_desembolsado
 )
-SELECT 
+SELECT
     t.id_tempo,
     l.id_localidade,
     e.id_empreendimento,
-    s.qtd_uh::INT, 
+    c.id_construtora,
+    a.id_agente,
+    s.qtd_uh::INT,
     s.qtd_uh_entregues::INT,
-    s.qtd_uh_vigentes::INT, 
-    s.qtd_uh_distratadas::INT, 
-    s.val_contratado_total
+    s.qtd_uh_vigentes::INT,
+    s.qtd_uh_distratadas::INT,
+    s.val_contratado_total,
+    s.val_desembolsado
 FROM dw_mcmv.stg_mcmv s
-LEFT JOIN dw_mcmv.dim_tempo t 
+LEFT JOIN dw_mcmv.dim_tempo t
         ON t.data = (
             CASE
                 WHEN s.dt_assinatura ~ '^\d{2}/\d{2}/\d{4}$' THEN TO_DATE(s.dt_assinatura, 'DD/MM/YYYY')
@@ -194,12 +230,16 @@ LEFT JOIN dw_mcmv.dim_tempo t
                 ELSE NULL
             END
         )
-LEFT JOIN dw_mcmv.dim_localidade l 
-        ON l.municipio = TRIM(s.txt_regiao) 
+LEFT JOIN dw_mcmv.dim_localidade l
+        ON l.municipio = TRIM(s.txt_regiao)
        AND l.uf = TRIM(s.txt_sigla_uf)
-       AND l.regiao = TRIM(s.txt_regiao_1) 
-
-LEFT JOIN dw_mcmv.dim_empreendimento e 
+       AND l.regiao = TRIM(s.txt_regiao_1)
+LEFT JOIN dw_mcmv.dim_empreendimento e
         ON e.nome = TRIM(s.txt_nome_empreendimento)
        AND e.modalidade = TRIM(s.txt_modalidade)
-       AND e.situacao = TRIM(s.txt_situacao_empreendimento);
+       AND e.situacao = TRIM(s.txt_situacao_empreendimento)
+LEFT JOIN dw_mcmv.dim_construtora c
+        ON c.cnpj = TRIM(s.txt_cnpj_construtora_entidade)
+       AND c.nome = TRIM(s.txt_nome_construtora_entidade)
+LEFT JOIN dw_mcmv.dim_agente_financeiro a
+        ON a.nome = TRIM(s.txt_nome_agente_financeiro);
